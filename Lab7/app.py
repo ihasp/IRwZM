@@ -72,11 +72,17 @@ def append_measurement(row: dict):
 
 def make_demo_label(df: pd.DataFrame, sbp_thr: int, dbp_thr: int) -> pd.Series:
     """
-    Etykieta bazuje teraz na progach zdefiniowanych przez użytkownika.
+    Kompleksowe ryzyko: punkty za wiek, BMI, glukozę i ciśnienie.
+    ML nauczy się wzorca wieloczynnikowego, którego progi nie widzą.
     """
-    return ((df["systolic_bp"] >= sbp_thr) | (df["diastolic_bp"] >= dbp_thr)).astype(
-        int
+    points = (
+        (df["age"] > 50).astype(int) * 2
+        + (df["bmi"] > 26.0).astype(int) * 2
+        + (df["glucose"] > 100).astype(int) * 2
+        + ((df["systolic_bp"] >= sbp_thr) | (df["diastolic_bp"] >= dbp_thr)).astype(int)
+        * 3
     )
+    return (points >= 4).astype(int)
 
 
 def train_model(df: pd.DataFrame, config: dict):
@@ -332,22 +338,29 @@ else:
     ml_pred = int(proba >= 0.5)
 
     c_rule, c_ml = st.columns(2)
+
     with c_rule:
         st.subheader("Logika Progowa")
         if rule_pred == 1:
             st.error(
-                f"Wynik: **PODWYŻSZONE RYZYKO** \n\n(Bieżący pomiar {int(systolic_bp)}/{int(diastolic_bp)} przekracza próg {config['sbp_thr']}/{config['dbp_thr']})"
+                f"Wynik: **PODWYŻSZONE RYZYKO** \n\n*(Sprawdzono tylko ciśnienie: {int(systolic_bp)}/{int(diastolic_bp)} przekracza {config['sbp_thr']}/{config['dbp_thr']})*"
             )
         else:
-            st.success("Wynik: **NISKIE RYZYKO** (Bieżący pomiar poniżej progów)")
+            st.success(
+                f"Wynik: **NISKIE RYZYKO** \n\n*(Sprawdzono tylko ciśnienie: {int(systolic_bp)}/{int(diastolic_bp)} w normie)*"
+            )
 
     with c_ml:
         st.subheader("Predykcja ML")
         st.write(f"Prawdopodobieństwo: **{proba:.3f}**")
+
+        # Przygotowanie tekstu z parametrami
+        ml_context = f"*(Oceniono łącznie: Wiek: {int(age)}, BMI: {bmi:.1f}, Glukoza: {int(glucose)}, Ciśnienie: {int(systolic_bp)}/{int(diastolic_bp)})*"
+
         if ml_pred == 1:
-            st.error("Wynik: **PODWYŻSZONE RYZYKO**")
+            st.error(f"Wynik: **PODWYŻSZONE RYZYKO** \n\n{ml_context}")
         else:
-            st.success("Wynik: **NISKIE RYZYKO**")
+            st.success(f"Wynik: **NISKIE RYZYKO** \n\n{ml_context}")
 
 st.divider()
 st.caption("Pliki lokalne: health_measurements.csv, risk_model.joblib, config.json")
